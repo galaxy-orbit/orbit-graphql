@@ -1,0 +1,49 @@
+{
+  "name": "@galaxy-stack/orbit-graphql",
+  "version": "0.1.8",
+  "description": "GraphQL module for Orbit framework",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun --packages external",
+    "dev": "bun --watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "changeset": "changeset"
+  },
+  "peerDependencies": {
+    "graphql": "^16.0.0"
+  },
+  "dependencies": {
+    "@galaxy-stack/orbit-core": "^0.1.10",
+    "@galaxy-stack/orbit-common": "^0.1.10"
+  },
+  "devDependencies": {
+    "graphql": "^16.9.0",
+    "typescript": "^5.0.0",
+    "reflect-metadata": "^0.2.2",
+    "@changesets/cli": "^2.27.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/galaxy-orbit/orbit-graphql.git"
+  },
+  "bugs": {
+    "url": "https://github.com/galaxy-orbit/orbit/issues"
+  },
+  "homepage": "https://galaxy-orbit-framework.vercel.app"
+}
