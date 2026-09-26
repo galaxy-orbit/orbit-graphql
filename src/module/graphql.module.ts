@@ -4,6 +4,7 @@ import { GraphQLSchema, graphql, parse, validate, execute } from 'graphql';
 import { SchemaBuilder } from '../schema/schema-builder';
 import { RESOLVER_METADATA } from '../decorators/resolver.decorators';
 import { DataLoaderContext, type DataLoaderFactory } from '../dataloader/context';
+import { withSecureHeaders } from '@galaxy-stack/orbit-common';
 import { depthLimit, complexityLimit, aliasLimit, blockIntrospection, type GraphQLSecurityOptions } from '../security';
 import { DEFAULT_GRAPHQL_SECURITY } from '../security/options';
 
@@ -13,6 +14,8 @@ export interface DataLoaderConfig {
 
 export interface GraphQLModuleOptions {
   autoSchemaFile?: string | boolean;
+  /** Secure response headers on every GraphQL response. Default: true */
+  secureHeaders?: boolean;
   security?: GraphQLSecurityOptions;
   sortSchema?: boolean;
   playground?: boolean;
@@ -31,7 +34,7 @@ export interface GraphQLModuleAsyncOptions {
 }
 
 const GRAPHQL_OPTIONS = Symbol('GRAPHQL_OPTIONS');
-const GRAPHQL_SCHEMA = Symbol('GRAPHQL_SCHEMA');
+export const GRAPHQL_SCHEMA = Symbol('GRAPHQL_SCHEMA');
 
 export class GraphQLModule {
   private static schemaBuilder = new SchemaBuilder();
@@ -116,6 +119,16 @@ export class GraphQLHandler {
     private readonly options: GraphQLModuleOptions
   ) {}
 
+  /** Built executable schema — used by orbit-devtools schema explorer. */
+  getSchema(): GraphQLSchema {
+    return this.schema;
+  }
+
+  private wrap(response: Response): Response {
+    if (this.options.secureHeaders === false) return response;
+    return withSecureHeaders(response);
+  }
+
   private createLoaderContext(): DataLoaderContext {
     const ctx = new DataLoaderContext();
     const loaders = this.options.loaders || {};
@@ -167,7 +180,7 @@ export class GraphQLHandler {
       );
 
       if (validationErrors.length > 0) {
-        return new Response(
+        return this.wrap(new Response(
           JSON.stringify({
             errors: validationErrors.map(e => this.formatError(e)),
           }),
@@ -175,7 +188,7 @@ export class GraphQLHandler {
             status: 400,
             headers: { 'Content-Type': 'application/json' },
           }
-        );
+        ));
       }
 
       const result = await execute({
@@ -190,11 +203,11 @@ export class GraphQLHandler {
         result.errors = result.errors.map(e => this.formatError(e)) as any;
       }
 
-      return new Response(JSON.stringify(result), {
+      return this.wrap(new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' },
-      });
+      }));
     } catch (error: any) {
-      return new Response(
+      return this.wrap(new Response(
         JSON.stringify({
           errors: [this.formatError(error)],
         }),
@@ -202,7 +215,7 @@ export class GraphQLHandler {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         }
-      );
+      ));
     }
   }
 

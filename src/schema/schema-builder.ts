@@ -35,6 +35,25 @@ import {
 import { getParamsMetadata } from '../decorators/param.decorators';
 import { DATALOADER_METADATA, DataLoaderContext } from '../dataloader/context';
 
+export interface SchemaGraphNode {
+  name: string;
+  kind: 'query' | 'mutation' | 'subscription' | 'input' | 'type';
+  fields: Array<{ name: string; type: string }>;
+}
+
+export interface SchemaGraphEdge {
+  from: string;
+  to: string;
+  via: string;
+}
+
+export interface SchemaGraph {
+  nodes: SchemaGraphNode[];
+  edges: SchemaGraphEdge[];
+}
+
+const roots = new Set(['Query', 'Mutation', 'Subscription']);
+
 export class SchemaBuilder {
   private objectTypes: Map<any, GraphQLObjectType> = new Map();
   private inputTypes: Map<any, GraphQLInputObjectType> = new Map();
@@ -100,7 +119,8 @@ export class SchemaBuilder {
       });
     }
 
-    return new GraphQLSchema(schemaConfig);
+    this.builtSchema = new GraphQLSchema(schemaConfig);
+    return this.builtSchema;
   }
 
   private buildFieldConfig(
@@ -352,4 +372,70 @@ export class SchemaBuilder {
     this.inputTypes.set(type, inputType);
     return inputType;
   }
+
+  /** Build a graph representation of the composed schema for devtools visualization. */
+  schemaGraph(): SchemaGraph {
+    if (!this.builtSchema) {
+      this.build();
+    }
+    const schema = this.builtSchema!;
+    const typeMap = schema.getTypeMap();
+    const builtins = new Set([
+      '__Schema', '__Type', '__TypeKind', '__Field', '__InputValue', '__EnumValue',
+      '__Directive', '__DirectiveLocation', 'String', 'Boolean', 'Int', 'Float', 'ID',
+    ]);
+
+    const nodes: SchemaGraphNode[] = [];
+    const edges: SchemaGraphEdge[] = [];
+    const roots = new Set(
+      ['Query', 'Mutation', 'Subscription'].filter((n) => typeMap[n])
+    );
+
+    for (const [name, type] of Object.entries(typeMap)) {
+      if (name.startsWith('__') || builtins.has(name)) continue;
+      const kind = name === 'Query' ? 'query'
+        : name === 'Mutation' ? 'mutation'
+        : name === 'Subscription' ? 'subscription'
+        : typeMap[name] instanceof GraphQLInputObjectType ? 'input'
+        : 'type';
+      const fields: Array<{ name: string; type: string }> = [];
+      if (type instanceof GraphQLObjectType || type instanceof GraphQLInputObjectType) {
+        for (const [fieldName, field] of Object.entries(type.getFields())) {
+          const fieldType = String(field.type).replace(/[[\]!]/g, '');
+          fields.push({ name: fieldName, type: fieldType });
+        }
+      }
+      nodes.push({ name, kind, fields });
+    }
+
+    // edges: root type -> its top-level field's return type
+    for (const rootName of roots) {
+      const rootType = typeMap[rootName];
+      if (!(rootType instanceof GraphQLObjectType)) continue;
+      for (const [fieldName, field] of Object.entries(rootType.getFields())) {
+        const returnType = String(field.type).replace(/[[\]!]/g, '');
+        if (!builtins.has(returnType)) {
+          edges.push({ from: rootName, to: returnType, via: fieldName });
+        }
+      }
+    }
+    void roots;
+
+    // object -> object relations (non-root)
+    for (const node of nodes) {
+      const type = typeMap[node.name];
+      if (!(type instanceof GraphQLObjectType) || roots.has(node.name)) continue;
+      for (const [fieldName, field] of Object.entries(type.getFields())) {
+        const returnType = String(field.type).replace(/[[\]!]/g, '');
+        if (!builtins.has(returnType) && typeMap[returnType]) {
+          edges.push({ from: node.name, to: returnType, via: fieldName });
+        }
+      }
+    }
+
+    return { nodes, edges };
+  }
+
+  private builtSchema?: GraphQLSchema;
+
 }
